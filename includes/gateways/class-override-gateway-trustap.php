@@ -37,13 +37,18 @@ if (class_exists('Trustap\PaymentGateway\Gateway')) {
             $order = wc_get_order($order_id);
 
             try {
+                amaturlog("Starting process_payment for Order ID: $order_id", 'info', 'Trustap_Payment');
+
                 if (!$this->validate_vendor_consistency($order->get_items())) {
                     wc_add_notice(__('You can only purchase from one vendor at a time using Trustap. Please split your cart.', 'wcfm-pg-trustap'), 'error');
                     return;
                 }
 
                 $seller_id = $this->helper->get_trustap_seller_id($order->get_items());
+                amaturlog("Seller ID: $seller_id", 'debug', 'Trustap_Payment');
+
                 if (is_wp_error($seller_id)) {
+                    amaturlog("Seller ID Error: " . $seller_id->get_error_message(), 'error', 'Trustap_Payment');
                     wc_add_notice($seller_id->get_error_message(), 'error');
                     return;
                 }
@@ -54,7 +59,10 @@ if (class_exists('Trustap\PaymentGateway\Gateway')) {
 
                 $trustap_model = $this->get_trustap_model();
                 $charge_details = $this->get_trustap_charge_details($order, $trustap_model);
+                amaturlog("Charge Details: " . print_r($charge_details, true), 'debug', 'Trustap_Payment');
+
                 $buyer_id = $this->helper->get_trustap_buyer_id();
+                amaturlog("Buyer ID: $buyer_id", 'debug', 'Trustap_Payment');
 
                 $transaction = $this->create_trustap_transaction($order, $seller_id, $buyer_id, $charge_details, $trustap_model);
 
@@ -65,7 +73,9 @@ if (class_exists('Trustap\PaymentGateway\Gateway')) {
                     'redirect' => $redirect_url,
                 ];
             } catch (Exception $e) {
-                $this->log('Process payment error raju1: ' . $e->getMessage());
+                $error_msg = 'Process payment error raju1: ' . $e->getMessage();
+                $this->log($error_msg);
+                amaturlog($error_msg, 'error', 'Trustap_Payment');
                 wc_add_notice($e->getMessage(), 'error');
                 return;
             }
@@ -153,13 +163,20 @@ if (class_exists('Trustap\PaymentGateway\Gateway')) {
                 $data['charge'] = Validator::sanitize_integer($charge_details['charge']);
             }
 
+            amaturlog("Trustap API Request Data: " . print_r($data, true), 'debug', 'Trustap_Payment');
+
             $endpoint = $trustap_model . 'me/transactions/' . 'create_with_guest_user';
             $response = $this->controller->post_request($endpoint, $seller_id, $data);
             $response_code = wp_remote_retrieve_response_code($response);
-            $transaction = json_decode(wp_remote_retrieve_body($response), true);
+            $response_body = wp_remote_retrieve_body($response);
+            $transaction = json_decode($response_body, true);
+
+            amaturlog("Trustap API Response Code: $response_code", 'debug', 'Trustap_Payment');
+            amaturlog("Trustap API Response Body: " . print_r($response_body, true), 'debug', 'Trustap_Payment');
 
             if ($response_code !== 201 && $response_code !== 200 || empty($transaction) || !isset($transaction['id'])) {
                 $error_message = isset($transaction['message']) ? $transaction['message'] : __('Failed to create Trustap transaction.', 'wcfm-pg-trustap');
+                amaturlog("Transaction Creation Failed: $error_message", 'error', 'Trustap_Payment');
                 throw new Exception($error_message);
             }
 
