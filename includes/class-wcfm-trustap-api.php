@@ -8,7 +8,6 @@ class WCFM_Trustap_API
     public $client_id;
     private $client_secret;
 
-<?php
     public function __construct()
     {
         // Load plugin settings
