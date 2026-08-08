@@ -19,16 +19,28 @@ class T4e_Pg_Trustap_Controller extends AbstractController
     public function post_request_no_user($endpoint, $data)
     {
         $url = $this->trustap_api_url . $endpoint;
-        $args = array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                // Empty Trustap-User header required by guest endpoint
-                'Trustap-User' => '',
-                'Authorization' => 'Basic ' .
-                    base64_encode($this->api_key . ':' . ''),
-            ),
-            'body' => json_encode($data)
-        );
+// Trim possible whitespace from stored API key
+$clean_key = trim($this->api_key);
+// Log request details (masking the key for security)
+amaturlog('Trustap POST (guest) request: ' . wp_json_encode([
+    'url' => $url,
+    'headers' => [
+        'Content-Type' => 'application/json',
+        'Trustap-User' => '',
+        'Authorization' => 'Basic ' . base64_encode($clean_key . ':' . ''),
+    ],
+    'body' => $data,
+]), 'debug', 'Trustap_Core');
+$args = array(
+    'headers' => array(
+        'Content-Type' => 'application/json',
+        // Empty Trustap-User header required by guest endpoint
+        'Trustap-User' => '',
+        'Authorization' => 'Basic ' .
+            base64_encode($clean_key . ':' . ''),
+    ),
+    'body' => json_encode($data)
+);
         $result = wp_remote_post($url, $args);
         if (is_wp_error($result)) {
             throw new \Exception(
