@@ -19,8 +19,24 @@ class T4e_Pg_Trustap_Controller extends AbstractController
     public function post_request_no_user($endpoint, $data)
     {
         $url = $this->trustap_api_url . $endpoint;
+        // ১. যদি $this->api_key ফাঁকা থাকে, তবে ডাটাবেস সেটিংস থেকে তুলে আনুন
+        $api_key = $this->api_key;
+        
+        if (empty($api_key)) {
+            // আপনার ট্রাস্ট্যাপ অপশন কি (option_name) অনুযায়ী নিচের 't4e_pg_trustap_settings' বা 'api_key' পরিবর্তন করে নিতে পারেন
+            $settings = get_option('t4e_pg_trustap_settings', array());
+            $api_key = isset($settings['api_key']) ? $settings['api_key'] : get_option('trustap_api_key', '');
+        }
+
         // Trim possible whitespace from stored API key
-        $clean_key = trim($this->api_key);
+        $clean_key = trim($api_key);
+
+        // API Key একেবারেই ফাঁকা কি না চেক করার জন্য সেফটি গার্ড
+        if (empty($clean_key)) {
+            amaturlog('Trustap Error: API Key is missing or empty in post_request_no_user', 'error', 'Trustap_Core');
+            throw new \Exception(__('Trustap API key is missing. Please check gateway settings.', 't4e-pg-trustap'));
+        }
+
         // Log request details (masking the key for security)
         amaturlog('Trustap POST (guest) request: ' . wp_json_encode([
             'url' => $url,
