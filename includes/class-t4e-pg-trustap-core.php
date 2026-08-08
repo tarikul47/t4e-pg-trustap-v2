@@ -19,6 +19,8 @@ class T4e_Pg_Trustap_Core
         $this->controller = new \Trustap\PaymentGateway\Controller\T4e_Pg_Trustap_Controller('trustap/v1');
         add_action('rest_api_init', array($this, 'register_routes'));
         add_action('t4e_pg_trustap_automated_claim_cron', array($this, 't4e_automated_claim_check'));
+        add_action('woocommerce_created_customer', array($this, 't4e_create_guest_account_on_registration'), 10, 1);
+        add_action('wcfm_vendor_registration_completed', array($this, 't4e_create_guest_account_on_registration'), 10, 1);
     }
 
     /**
@@ -368,11 +370,71 @@ class T4e_Pg_Trustap_Core
         }
     }
 
+    public function t4e_create_guest_account_on_registration($customer_id)
+    {
+        $result = $this->t4e_create_guest_account($customer_id);
+        if (is_wp_error($result)) {
+            amaturlog("Failed to create guest account on registration for User ID $customer_id: " . $result->get_error_message(), 'error', 'Trustap_Core');
+        }
+    }
+
+    /**
+     * Creates a Trustap guest account for a user.
+     * This can be called during WP registration or WooCommerce customer creation.
+     *
+     * @param int $user_id The WordPress user ID.
+     * @return string|WP_Error The Guest User ID or a WP_Error.
+     */
+    public function t4e_create_guest_account($user_id)
+    {
+        // Check if already exists
+        $existing_id = Trustap_User_Manager::get_guest_id($user_id);
+        if ($existing_id) {
+            return $existing_id;
+        }
+
+        $user_data = get_userdata($user_id);
+        if (!$user_data) {
+            return new WP_Error('invalid_user', 'User data not found.');
+        }
+
+        $email = $user_data->user_email;
+        $first_name = $user_data->first_name ?: $user_data->user_login;
+        $last_name = $user_data->last_name ?: $user_data->user_login;
+        $country = get_user_meta($user_id, 'billing_country', true) ?: 'IE';
+
+        $body = array(
+            'email' => $email,
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'country_code' => $country,
+            'tos_acceptance' => array(
+                'unix_timestamp' => time(),
+                'ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'
+            )
+        );
+
+        try {
+            $response = $this->controller->post_request_no_user('guest_users', $body);
+            $decoded_response = json_decode(wp_remote_retrieve_body($response), true);
+
+            if (isset($decoded_response['id'])) {
+                $guest_id = $decoded_response['id'];
+                Trustap_User_Manager::save_guest_id($user_id, $guest_id);
+                return $guest_id;
+            }
+            return new WP_Error('api_failure', $decoded_response['message'] ?? 'Failed to create guest account.');
+        } catch (\Exception $e) {
+            return new WP_Error('exception', $e->getMessage());
+        }
+    }
+
     /**
      * Automated check to claim transactions once the complaint period has expired.
      * This is intended to be called by a WP-Cron job.
      */
     public function t4e_automated_claim_check()
+
     {
         $args = array(
             'payment_method' => 'trustap',

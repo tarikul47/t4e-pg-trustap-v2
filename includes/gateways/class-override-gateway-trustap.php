@@ -61,7 +61,7 @@ if (class_exists('Trustap\PaymentGateway\Gateway')) {
                 $charge_details = $this->get_trustap_charge_details($order, $trustap_model);
                 amaturlog("Charge Details: " . print_r($charge_details, true), 'debug', 'Trustap_Payment');
 
-                $buyer_id = $this->helper->get_trustap_buyer_id();
+                $buyer_id = $this->helper->ensure_trustap_buyer_id($order);
                 amaturlog("Buyer ID: $buyer_id", 'debug', 'Trustap_Payment');
 
                 $transaction = $this->create_trustap_transaction($order, $seller_id, $buyer_id, $charge_details, $trustap_model);

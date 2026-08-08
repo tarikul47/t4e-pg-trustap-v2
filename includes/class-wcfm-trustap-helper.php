@@ -14,8 +14,8 @@ class WCFM_Trustap_Helper
 
     public function __construct()
     {
-        // This creates a direct dependency on the parent plugin's controller.
-        $this->controller = new AbstractController('trustap/v1');
+        // Use the child controller to access post_request_no_user
+        $this->controller = new \Trustap\PaymentGateway\Controller\T4e_Pg_Trustap_Controller('trustap/v1');
         $this->trustap_api = new WCFM_Trustap_API();
     }
 
@@ -64,4 +64,63 @@ class WCFM_Trustap_Helper
         }
         return $trustap_buyer_id ? $trustap_buyer_id : '';
     }
+
+    /**
+     * Ensures that a Trustap Guest ID exists for the buyer.
+     * If missing, it attempts to create one using the order's billing email.
+     *
+     * @param \WC_Order $order The current order.
+     * @return string The Trustap Guest User ID.
+     */
+    public function ensure_trustap_buyer_id($order)
+    {
+        $buyer_id = get_current_user_id();
+        $trustap_buyer_id = $this->get_trustap_buyer_id();
+
+        if (!empty($trustap_buyer_id)) {
+            return $trustap_buyer_id;
+        }
+
+        // If we are here, the user doesn't have a Guest ID. Let's create one.
+        $email = $order->get_billing_email();
+        if (empty($email)) {
+            return '';
+        }
+
+        $user_data = get_userdata($buyer_id);
+        $first_name = $user_data ? $user_data->first_name : $order->get_billing_first_name();
+        $last_name = $user_data ? $user_data->last_name : $order->get_billing_last_name();
+        $country = $order->get_billing_country() ?: 'IE';
+
+        $body = array(
+            'email' => $email,
+            'first_name' => $first_name ?: 'Customer',
+            'last_name' => $last_name ?: 'Customer',
+            'country_code' => $country,
+            'tos_acceptance' => array(
+                'unix_timestamp' => time(),
+                'ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'
+            )
+        );
+
+        try {
+            $response = $this->controller->post_request_no_user('guest_users', $body);
+            $decoded_response = json_decode(wp_remote_retrieve_body($response), true);
+
+            if (isset($decoded_response['id'])) {
+                $new_id = $decoded_response['id'];
+                // Save to user meta if user is logged in
+                if ($buyer_id) {
+                    update_user_meta($buyer_id, "trustap_guest_{$this->trustap_api->environment}_user_id", $new_id);
+                }
+                return $new_id;
+            }
+        } catch (\Exception $e) {
+            // Log failure but return empty to let the gateway handle the error
+            amaturlog("Failed to create on-the-fly guest account for " . $email . ": " . $e->getMessage(), 'error', 'Trustap_Helper');
+        }
+
+        return '';
+    }
+
 }
