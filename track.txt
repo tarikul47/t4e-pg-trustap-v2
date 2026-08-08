@@ -1,0 +1,7 @@
+1. Vendor need to assign Trustap payment 
+    a. Need to assign new Trustap payment gateway
+    b. when assign then need to show some fields 
+    c. User redirect Trustap dashbaord where user able to create his account and redirect back 
+    d. We save the user ID in database 
+    e. Need to show something that showing user activated with his account
+

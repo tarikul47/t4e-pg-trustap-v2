@@ -1,0 +1,536 @@
+{
+  "info": {
+    "_postman_id": "36ae9ce0-fe19-4a06-8608-f69691158b4b",
+    "name": "Trustap API v1 - Guest User to Claim Flow (corrected hosts)",
+    "description": "Sandbox walkthrough: create guest seller + buyer, create a P2P transaction between them, pay the deposit via Trustap's hosted checkout, accept the deposit, confirm handover, then claim the transaction for the seller's full Trustap account.\n\nFull sequence: 0 sanity check -> 1 create guest seller -> 2 create guest buyer -> 3 quote fee -> 4 create transaction (also builds {{pay_deposit_link}} in the console - open it in a browser and pay as the guest buyer) -> 5 accept deposit as guest seller -> 6 confirm handover as guest seller -> 7 claim for seller with the full account.\n\nHost correction (2026-07-22): `api-sandbox.trustap.com` (used elsewhere in the plugin) does NOT resolve - verified via DNS lookup and curl. The real Trustap API v1 hosts, confirmed against Trustap's own OpenAPI doc example and against the working host found during the 2026-07-18 debugging session in trustap-claim-seller-notes.md, are:\n- Staging/sandbox API: https://dev.stage.trustap.com\n- Live/production API: https://dev.trustap.com\n- Staging/sandbox hosted checkout (pay_deposit etc.): https://actions.stage.trustap.com/\n- Live/production hosted checkout: https://actions.trustap.com/\n\nSee trustap-guest-claim-implementation-plan.md for the related plugin bug (admin/class-t4e-pg-trustap-admin.php:205 still points at the dead api-sandbox host).\n\nStep 5 (accept_deposit_with_guest_seller) will 403 with code deposit_not_paid until the buyer actually completes payment at {{pay_deposit_link}} - this is a real browser/manual step, there's no pure-API way to submit card details for the deposit.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "18841506"
+  },
+  "item": [
+    {
+      "name": "0. Sanity check (host + auth reachable)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK - host resolves and api_key is accepted', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 401) console.warn('401: api_key is wrong or blank - set the collection variable api_key before continuing.');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/charge?currency=eur&price=1234",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "charge"
+          ],
+          "query": [
+            {
+              "key": "currency",
+              "value": "eur"
+            },
+            {
+              "key": "price",
+              "value": "1234"
+            }
+          ]
+        },
+        "description": "Run this first. If this fails to connect at all, base_url is wrong. If it 401s, api_key is wrong. If it 200s, you're good to proceed."
+      },
+      "response": []
+    },
+    {
+      "name": "1. Create guest seller",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('guest_seller_id', json.id);",
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('has id', () => pm.expect(json.id).to.be.a('string'));"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Seller\",\n  \"country_code\": \"IE\",\n  \"tos_acceptance\": {\n    \"ip\": \"127.0.0.1\",\n    \"unix_timestamp\": {{$timestamp}}\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/guest_users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "guest_users"
+          ]
+        },
+        "description": "Creates a Trustap guest user to act as the seller. Response `id` is saved into {{guest_seller_id}} by the Tests script."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Create guest buyer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('guest_buyer_id', json.id);",
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('has id', () => pm.expect(json.id).to.be.a('string'));"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"rajufresh00@gmail.com\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Buyer\",\n  \"country_code\": \"IE\",\n  \"tos_acceptance\": {\n    \"ip\": \"127.0.0.1\",\n    \"unix_timestamp\": {{$timestamp}}\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/guest_users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "guest_users"
+          ]
+        },
+        "description": "Creates a Trustap guest user to act as the buyer. Response `id` is saved into {{guest_buyer_id}} by the Tests script."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Quote fee (charge)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('charge_amount', json.charge);",
+              "pm.collectionVariables.set('charge_calculator_version', json.charge_calculator_version);",
+              "pm.test('200 OK', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/charge?currency=eur&price=1234",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "charge"
+          ],
+          "query": [
+            {
+              "key": "currency",
+              "value": "eur"
+            },
+            {
+              "key": "price",
+              "value": "1234"
+            }
+          ]
+        },
+        "description": "Returns the Trustap fee for a 1234 (smallest-unit) EUR item. `charge` and `charge_calculator_version` are saved for use in the transaction body."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Create guest-to-guest transaction",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Guards against the 'malformed_json: invalid character ,' error -",
+              "// that happens when charge_amount/charge_calculator_version are empty",
+              "// because request 3 (Quote fee) hasn't been run yet in this session.",
+              "const chargeAmount = pm.collectionVariables.get('charge_amount');",
+              "const chargeVersion = pm.collectionVariables.get('charge_calculator_version');",
+              "const guestSeller = pm.collectionVariables.get('guest_seller_id');",
+              "const guestBuyer = pm.collectionVariables.get('guest_buyer_id');",
+              "",
+              "const missing = [];",
+              "if (!chargeAmount) missing.push('charge_amount');",
+              "if (!chargeVersion) missing.push('charge_calculator_version');",
+              "if (!guestSeller) missing.push('guest_seller_id');",
+              "if (!guestBuyer) missing.push('guest_buyer_id');",
+              "",
+              "if (missing.length) {",
+              "  throw new Error('Missing collection variable(s): ' + missing.join(', ') + '. Run requests 1, 2 and 3 first (or Run the whole collection top-to-bottom) before this request.');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const jsonData = pm.response.json();",
+              "pm.collectionVariables.set('transaction_id', jsonData.id);",
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('seller_is_guest is true', () => pm.expect(jsonData.seller_is_guest).to.eql(true));",
+              "",
+              "// Mimics PHP's http_build_query($state_parts, '', ':') + base64_encode()",
+              "// from includes/gateways/class-override-gateway-trustap.php:173-201",
+              "function phpUrlEncode(v) {",
+              "  return encodeURIComponent(v).replace(/%20/g, '+');",
+              "}",
+              "",
+              "const stateParts = {",
+              "  token: (Math.random().toString(36) + Math.random().toString(36)).slice(2, 34),",
+              "  order_id: pm.collectionVariables.get('test_order_id'),",
+              "  name: pm.collectionVariables.get('test_buyer_name'),",
+              "  line1: pm.collectionVariables.get('test_buyer_line1'),",
+              "  city: pm.collectionVariables.get('test_buyer_city'),",
+              "  state: pm.collectionVariables.get('test_buyer_state'),",
+              "  postcode: pm.collectionVariables.get('test_buyer_postcode'),",
+              "  country: pm.collectionVariables.get('test_buyer_country'),",
+              "  tx_type: 'p2p'",
+              "};",
+              "",
+              "const stateString = Object.entries(stateParts)",
+              "  .map(([k, v]) => `${k}=${phpUrlEncode(v || '')}`)",
+              "  .join(':');",
+              "",
+              "const stateBase64 = btoa(stateString);",
+              "",
+              "const payDepositUrl = pm.collectionVariables.get('actions_base_url')",
+              "  + 'f2f/transactions/' + jsonData.id",
+              "  + '/pay_deposit?redirect_uri=' + pm.collectionVariables.get('redirect_uri')",
+              "  + '&state=' + stateBase64;",
+              "",
+              "pm.collectionVariables.set('pay_deposit_link', payDepositUrl);",
+              "console.log('Open this in a browser to pay the deposit as the guest buyer:');",
+              "console.log(payDepositUrl);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"buyer_id\": \"{{guest_buyer_id}}\",\n  \"seller_id\": \"{{guest_seller_id}}\",\n  \"creator_role\": \"seller\",\n  \"currency\": \"eur\",\n  \"description\": \"Postman test item\",\n  \"deposit_price\": 1234,\n  \"deposit_charge\": {{charge_amount}},\n  \"charge_calculator_version\": {{charge_calculator_version}},\n  \"skip_remainder\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/me/transactions/create_with_guest_user",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "me",
+            "transactions",
+            "create_with_guest_user"
+          ]
+        },
+        "description": "Creates a P2P transaction with both buyer and seller as guest users. Response `id` is saved into {{transaction_id}}. Tests script also builds {{pay_deposit_link}} - open the console after running this request to get the link, since the deposit must be paid via Trustap's hosted checkout before handover can be confirmed."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Accept deposit (guest seller)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK or already-accepted 403', () => {",
+              "  pm.expect([200, 403]).to.include(pm.response.code);",
+              "});",
+              "if (pm.response.code === 403) {",
+              "  const json = pm.response.json();",
+              "  if (json.code === 'deposit_not_paid') {",
+              "    console.warn('deposit_not_paid: open {{pay_deposit_link}} in a browser and complete payment as the guest buyer first, then re-run this request.');",
+              "  } else if (json.code === 'deposit_already_accepted') {",
+              "    console.log('Deposit was already accepted - safe to continue to the next request.');",
+              "  } else {",
+              "    console.warn('403: ' + json.code);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Trustap-User",
+            "value": "{{guest_seller_id}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/transactions/{{transaction_id}}/accept_deposit_with_guest_seller",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "transactions",
+            "{{transaction_id}}",
+            "accept_deposit_with_guest_seller"
+          ]
+        },
+        "description": "Guest seller accepts the buyer's paid deposit. No body. Requires the buyer to have already paid via {{pay_deposit_link}} (from request 4's console output) - otherwise returns 403 deposit_not_paid. Must succeed before handover can be confirmed."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Confirm handover (guest seller)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK or already-confirmed 400', () => {",
+              "  pm.expect([200, 400]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Trustap-User",
+            "value": "{{guest_seller_id}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/transactions/{{transaction_id}}/confirm_handover_with_guest_user",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "transactions",
+            "{{transaction_id}}",
+            "confirm_handover_with_guest_user"
+          ]
+        },
+        "description": "Guest seller confirms handover. A 400 with code seller_handover_already_confirmed is fine if this is re-run. Requires request 5 (accept deposit) to have succeeded first."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Claim transaction for seller (full account)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const json = pm.response.json();",
+              "  pm.test('seller_id now equals full account id', () => pm.expect(json.seller_id).to.eql(pm.collectionVariables.get('seller_full_user_id')));",
+              "  pm.test('seller_is_guest is false', () => pm.expect(json.seller_is_guest).to.eql(false));",
+              "}",
+              "if (pm.response.code === 401) {",
+              "  console.warn('401: seller full account has likely not completed OAuth Connect with this client in this environment yet - see trustap-claim-seller-notes.md');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Trustap-User",
+            "value": "{{seller_full_user_id}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/p2p/transactions/{{transaction_id}}/claim_for_seller",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "p2p",
+            "transactions",
+            "{{transaction_id}}",
+            "claim_for_seller"
+          ]
+        },
+        "description": "Seller claims the transaction with their full Trustap account. Requires the full account to have completed OAuth Connect with this API key's client at least once in this environment - otherwise expect 401 unauthorized (see trustap-claim-seller-notes.md, 2026-07-18 debugging session)."
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://dev.stage.trustap.com",
+      "description": "Staging. Use https://dev.trustap.com for live."
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "seller_full_user_id",
+      "value": "091d41a6-a9ed-45a3-b8e4-9670c0c461c1"
+    },
+    {
+      "key": "guest_seller_id",
+      "value": ""
+    },
+    {
+      "key": "guest_buyer_id",
+      "value": ""
+    },
+    {
+      "key": "charge_amount",
+      "value": ""
+    },
+    {
+      "key": "charge_calculator_version",
+      "value": ""
+    },
+    {
+      "key": "transaction_id",
+      "value": ""
+    },
+    {
+      "key": "actions_base_url",
+      "value": "https://actions.stage.trustap.com/",
+      "description": "Hosted checkout/actions web app. Live equivalent: https://actions.trustap.com/. Confirmed reachable (HTTP 200) 2026-07-22."
+    },
+    {
+      "key": "redirect_uri",
+      "value": "https://REPLACE-WITH-YOUR-SITE/wc-api/trustap_webhook_raju",
+      "description": "Must match get_home_url() . '/wc-api/trustap_webhook_raju' from includes/gateways/class-override-gateway-trustap.php:194 - replace with your actual site URL."
+    },
+    {
+      "key": "test_order_id",
+      "value": "9999"
+    },
+    {
+      "key": "test_buyer_name",
+      "value": "Test Buyer"
+    },
+    {
+      "key": "test_buyer_line1",
+      "value": "Address 1"
+    },
+    {
+      "key": "test_buyer_city",
+      "value": "Dublin"
+    },
+    {
+      "key": "test_buyer_state",
+      "value": ""
+    },
+    {
+      "key": "test_buyer_postcode",
+      "value": "D01 AB12"
+    },
+    {
+      "key": "test_buyer_country",
+      "value": "IE"
+    },
+    {
+      "key": "pay_deposit_link",
+      "value": ""
+    }
+  ]
+}
