@@ -77,7 +77,7 @@ class T4e_Pg_Trustap_Controller extends AbstractController
 
         // --- DEBUG LOG START ---
         $class_api_key = $this->api_key;
-        $db_settings = get_option('t4e_pg_trustap_settings', array());
+        $db_settings = get_option('woocommerce_trustap_settings', array());
 
         amaturlog('Trustap DEBUG - Class API Key: ' . print_r($class_api_key, true), 'debug', 'Trustap_Core');
         amaturlog('Trustap DEBUG - DB Option Settings: ' . print_r($db_settings, true), 'debug', 'Trustap_Core');
