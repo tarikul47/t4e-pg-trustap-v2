@@ -423,6 +423,9 @@ class T4e_Pg_Trustap_Core
                 Trustap_User_Manager::save_guest_id($user_id, $guest_id);
                 return $guest_id;
             }
+            // Log detailed API failure for debugging
+            $debug_msg = 'Guest account creation API failure. Response: ' . wp_json_encode($decoded_response);
+            amaturlog($debug_msg, 'debug', 'Trustap_Core');
             return new WP_Error('api_failure', $decoded_response['message'] ?? 'Failed to create guest account.');
         } catch (\Exception $e) {
             return new WP_Error('exception', $e->getMessage());

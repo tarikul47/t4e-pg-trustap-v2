@@ -30,6 +30,12 @@ The child plugin currently duplicates some API logic and has hardcoded URLs.
 - [x] **Task 1.4: Fix Autoloading/Dependency Issue**
     - Move plugin requirements into `run_t4e_pg_trustap()` to ensure parent plugin `trustap-payment-gateway` autoloader is registered before child classes are loaded.
 
+- [x] **Task 1.5: Guest Account Management & On-the-fly Creation**
+    - Implement `ensure_trustap_buyer_id` to automatically create guest accounts during checkout if missing.
+    - Hook into `woocommerce_created_customer` to automate guest account creation upon user registration.
+    - Hook into `wcfm_vendor_registration_completed` to ensure vendors have a guest account upon registration.
+
+
 ### Phase 2: Vendor Connection (OAuth Flow)
 - [x] **Task 2.1: Vendor Dashboard UI**
     - Add a "Trustap Connection" section to the WCFM Vendor Dashboard.
