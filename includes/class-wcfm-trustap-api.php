@@ -8,35 +8,33 @@ class WCFM_Trustap_API
     public $client_id;
     private $client_secret;
 
+<?php
     public function __construct()
     {
-        //  $mode = $GLOBALS['testmode'] ? 'test' : 'live';
+        // Load plugin settings
         $this->settings = get_option('woocommerce_trustap_settings', array());
         $this->test_mode = (isset($this->settings['testmode']) && $this->settings['testmode'] === 'yes');
         $this->environment = $this->test_mode ? 'test' : 'live';
 
-        /*
-        * update_option("trustap_{$environment}_username", $credentials->Username);
-        * update_option("trustap_{$environment}_password", $credentials->Password);
+        $logger = wc_get_logger();
+        $logger->info('Trustap environment: ' . $this->environment, ['source' => 'trustap']);
 
-        * update_option("trustap_{$environment}_api_key", $credentials->apiKey);
-        * update_option("trustap_{$environment}_client_id", $credentials->clientID);
-        * update_option("trustap_{$environment}_client_secret", $credentials->clientSecret);
-        * update_option("trustap_{$environment}_provider_url", $provider_url);
-        */
-
+        // Attempt to load API key for determined environment
         $this->api_key = get_option("trustap_{$this->environment}_api_key");
+        // Fallback: if not set, try the opposite environment (covers mis‑configuration)
+        if (empty($this->api_key)) {
+            $fallback_env = $this->environment === 'test' ? 'live' : 'test';
+            $logger->info('Primary API key empty, trying fallback env: ' . $fallback_env, ['source' => 'trustap']);
+            $this->api_key = get_option("trustap_{$fallback_env}_api_key");
+            if (!empty($this->api_key)) {
+                $this->environment = $fallback_env; // switch to the environment that actually has a key
+                $logger->info('Using fallback environment: ' . $this->environment, ['source' => 'trustap']);
+            }
+        }
+        $logger->info('Loaded api_key length: ' . (strlen($this->api_key) ?: 0), ['source' => 'trustap']);
         $this->client_id = get_option("trustap_{$this->environment}_client_id");
         $this->client_secret = get_option("trustap_{$this->environment}_client_secret");
         $this->provider_url = get_option("trustap_{$this->environment}_provider_url");
-
-        $logger = wc_get_logger();
-
-        // Always cast settings into a readable string for logs
-        // $logger->info(
-        //     'woocommerce_trustap_settings: ' . wp_json_encode($this->api_key, JSON_PRETTY_PRINT),
-        //     array('source' => 'trustap')
-        // );
     }
 
     private function get_sso_url()
