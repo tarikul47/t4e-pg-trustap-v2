@@ -25,8 +25,12 @@ class T4e_Pg_Trustap_Controller extends AbstractController
         if (empty($api_key)) {
             // আপনার ট্রাস্ট্যাপ অপশন কি (option_name) অনুযায়ী নিচের 't4e_pg_trustap_settings' বা 'api_key' পরিবর্তন করে নিতে পারেন
             $settings = get_option('t4e_pg_trustap_settings', array());
+
             $api_key = isset($settings['api_key']) ? $settings['api_key'] : get_option('trustap_api_key', '');
-        }
+
+            amaturlog('Trustap POST (guest) request: ' . [$settings]);
+        
+            
 
         // Trim possible whitespace from stored API key
         $clean_key = trim($api_key);
