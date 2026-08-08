@@ -22,6 +22,8 @@ class T4e_Pg_Trustap_Controller extends AbstractController
         $args = array(
             'headers' => array(
                 'Content-Type' => 'application/json',
+                // Empty Trustap-User header required by guest endpoint
+                'Trustap-User' => '',
                 'Authorization' => 'Basic ' .
                     base64_encode($this->api_key . ':' . ''),
             ),
