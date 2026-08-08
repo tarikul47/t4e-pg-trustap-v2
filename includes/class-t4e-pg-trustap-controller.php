@@ -75,6 +75,9 @@ class T4e_Pg_Trustap_Controller extends AbstractController
     {
         $url = $this->trustap_api_url . $endpoint;
 
+        // $this->api_key = get_option("trustap_{$mode}_api_key");
+        $this->api_key = get_option("trustap_test_api_key");
+
         // --- DEBUG LOG START ---
         $class_api_key = $this->api_key;
         $db_settings = get_option('woocommerce_trustap_settings', array());
