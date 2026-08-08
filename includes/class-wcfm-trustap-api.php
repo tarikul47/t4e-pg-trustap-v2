@@ -7,6 +7,7 @@ class WCFM_Trustap_API
     public $api_key;
     public $client_id;
     private $client_secret;
+    public $provider_url;
 
     public function __construct()
     {
